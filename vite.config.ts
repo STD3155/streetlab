@@ -12,10 +12,12 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          geometry: ['@turf/turf', 'proj4'],
-          map: ['leaflet', 'react-leaflet'],
-          framework: ['react', 'react-dom', 'zustand'],
+        manualChunks(id) {
+          if (id.includes('/node_modules/@turf/jsts/')) return 'turf-buffer-engine';
+          if (id.includes('/node_modules/@turf/buffer/')) return 'turf-buffer';
+          if (id.includes('/node_modules/@turf/') || id.includes('/node_modules/proj4/')) return 'geometry';
+          if (id.includes('/node_modules/leaflet/') || id.includes('/node_modules/react-leaflet/')) return 'map';
+          if (id.includes('/node_modules/react/') || id.includes('/node_modules/react-dom/') || id.includes('/node_modules/zustand/')) return 'framework';
         },
       },
     },

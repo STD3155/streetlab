@@ -24,6 +24,8 @@ Stand der Implementierung; alle automatisierten Tests laufen lokal ohne Backend.
 
 Zusatztests decken ungültige/Selbstüberschneidungs-Polygone, NaN, Projektgrößenlimit, beschädigtes JSON, falsche Schema-Version, MultiPolygon-Erhalt, Szenarioisolation und vollständige Hindernisprüfung ab.
 
+Geodatenimport-Erweiterung: ALKIS-GeoJSON (Straßen/Gebäude) wird im Unit-Test gegen servicekonforme Antworten geprüft; OSM-Puffer/Attribution und explizite Gehweg-Tags ebenfalls. Ein E2E-Test setzt einen RLP-Ort und importiert ALKIS-Antworten (Netzwerk im Test kontrolliert). Live-Dienstverfügbarkeit ist kein reproduzierbarer Test und wird nicht als Test-Garantie behauptet.
+
 ## Nicht abgenommen
 
 - Kein Rathauskurven-Vermessungsdatensatz oder Vor-Ort-Vergleich liegt vor.

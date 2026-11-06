@@ -8,6 +8,12 @@
 - Fahrbahn ist die erlaubte Fläche im Modus `road_only`; der gesamte Fahrzeugumriss muss darin liegen. Gehwege sind dort nicht befahrbar. Gebäude und harte Hindernisse sind stets unbefahrbar. `curb` ist nicht automatisch eine harte Barriere.
 - Im `diagnostic_sidewalk_allowed`-Modus wird die Vereinigung aus Fahrbahn und Gehwegen als befahrbare Prüffläche verwendet. Gehwegkontakt bleibt ein geometrischer Konflikt und wird nicht als wahrscheinliches Fahrverhalten interpretiert.
 
+## Externe Geometriequellen
+
+- **ALKIS RLP:** Straßenverkehrsflächen (`AX_Strassenverkehr`) werden als Straßen-Polygone und Gebäude (`GebaeudeBauwerk`) als harte Hindernisse übernommen. Diese offiziellen Katasterflächen sind nicht zwingend identisch mit der Asphalt-/Bordkante. Der ALKIS-`Weg`-Layer wird nicht pauschal als Gehweg klassifiziert. Die Dienstmetadaten nennen monatliche Aktualität, warnen jedoch vor unterschiedlichen Entstehungsepochen und unvermeidlichen Messungenauigkeiten.
+- **OpenStreetMap:** Straßen-Ways werden aus einem expliziten Breiten-Tag, `lanes × 3 m` oder einer dokumentierten `highway`-Klassenannahme gepuffert. OSM-Gehwege werden nur importiert, wenn sie explizit getaggt sind. Straßenlinien-Puffer stellen keine gemessenen Straßenränder dar.
+- Der jeweilige externe Objekt-Identifier, einfache Attribute, Datenquelle und Breitenherkunft bleiben am importierten Feature erhalten. Der Projekt-Hinweis nennt die erforderliche Quellenangabe. Externe Dienste werden nur nach Nutzeraktion abgefragt; Antworten sind auf kleine Ausschnitte begrenzt.
+
 ## Pkw-Referenzmodell
 
 Die Demo-Vorlage verwendet diese ausdrücklich exemplarischen Modellwerte (keine amtliche Standardisierung):

@@ -9,7 +9,15 @@ export type SurfaceFeature = {
   id: Id;
   kind: FeatureKind;
   geometry: PolygonXY;
-  properties?: { name?: string; source?: string; uncertaintyM?: number; diameterM?: number };
+  properties?: {
+    name?: string;
+    source?: string;
+    uncertaintyM?: number;
+    diameterM?: number;
+    sourceObjectId?: string;
+    sourceAttributes?: Record<string, string | number>;
+    widthSource?: string;
+  };
 };
 
 export type VehicleSpec = {

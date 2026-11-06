@@ -37,19 +37,22 @@ Abhängigkeiten sind in `package-lock.json` eingefroren. `npm audit` ist mit der
 1. `Demo laden` öffnet die reproduzierbare, synthetische `Demo-L-Kurve` (lokale Maße in Metern, ausdrücklich nicht vermessen).
 2. Links können Fahrbahn, Gehweg, Gebäude, Hindernis und weitere Polygone durch Kartenklicks erstellt werden; `Polygon abschließen` übernimmt die Fläche.
 3. `Bereich aufziehen` begrenzt den Arbeitsbereich auf höchstens 500 m Durchmesser. Koordinaten werden als `Breitengrad, Längengrad` (WGS84) eingegeben; ein neues Gebiet startet bewusst leer.
-4. Start und Ziel auf der Karte anklicken, Richtungswinkel in Grad setzen und Fahrzeugdaten bei Bedarf bearbeiten. Der Fahrzeugreferenzpunkt ist die Hinterachsmitte.
-5. Zwischen Bestands- und Variantenbearbeitung wechseln. Die Demo enthält bereits eine Insel; zusätzlich lassen sich Inseln, Poller (Ø 0,1–2,0 m) oder Gehwegschutz zeichnen. Variantenänderungen verändern den Bestand nicht.
-6. `Bestand & Variante berechnen` startet zwei unabhängige Vorwärtsplanungen mit denselben Manöver- und Fahrzeugparametern. „Nur Fahrbahn“ verlangt, dass der gesamte Fahrzeugumriss innerhalb der erfassten Fahrbahn bleibt. Das Ergebnis enthält Status, Linien, approximierte Schleppflächen, Gehwegkontakt, Überdeckung, Abstand und Weglänge.
-7. Projektdatei als versioniertes JSON oder Geometrie als WGS84-GeoJSON exportieren. JSON kann importiert werden; der aktuelle Projektstand wird zusätzlich automatisch in `localStorage` gehalten.
+4. Bei **Geometriedatenquelle** ALKIS Rheinland-Pfalz oder OpenStreetMap wählen und auf „Geometrie übernehmen“ klicken. Der Abruf ersetzt nach Bestätigung Bestand und Variantenflächen. ALKIS ist der bevorzugte amtliche Import innerhalb von Rheinland-Pfalz; OSM ist die Alternative für andere Orte.
+5. Start und Ziel auf der Karte anklicken, Richtungswinkel in Grad setzen und Fahrzeugdaten bei Bedarf bearbeiten. Der Fahrzeugreferenzpunkt ist die Hinterachsmitte.
+6. Zwischen Bestands- und Variantenbearbeitung wechseln. Die Demo enthält bereits eine Insel; zusätzlich lassen sich Inseln, Poller (Ø 0,1–2,0 m) oder Gehwegschutz zeichnen. Variantenänderungen verändern den Bestand nicht.
+7. `Bestand & Variante berechnen` startet zwei unabhängige Vorwärtsplanungen mit denselben Manöver- und Fahrzeugparametern. „Nur Fahrbahn“ verlangt, dass der gesamte Fahrzeugumriss innerhalb der erfassten Fahrbahn bleibt. Das Ergebnis enthält Status, Linien, approximierte Schleppflächen, Gehwegkontakt, Überdeckung, Abstand und Weglänge.
+8. Projektdatei als versioniertes JSON oder Geometrie als WGS84-GeoJSON exportieren. JSON kann importiert werden; der aktuelle Projektstand wird zusätzlich automatisch in `localStorage` gehalten.
 
 Zeichenwerkzeuge umfassen Polygon-Erstellung, Flächenverschiebung, Stützpunktverschiebung, Auswahl/Löschen, Messung und 20 Schritte Undo/Redo. Layer können nach Szenario und Feature-Art ausgeblendet werden; das ändert nicht die Simulationsgeometrie.
 
 ## Datenquellen und Datenschutz
 
 - OSM-Basiskarte: `https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png`, mit sichtbarer Attribution „© OpenStreetMap-Mitwirkende“. Die Tile-URL ist über `VITE_OSM_TILE_URL` konfigurierbar. Kacheln werden im normalen Kartenbetrieb angefragt und nicht gespeichert/vorabgeladen. Siehe [OSM Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/).
+- ALKIS Rheinland-Pfalz: Straßenverkehrsflächen aus `AX_Strassenverkehr` und Gebäude aus `GebaeudeBauwerk`, bezogen über öffentliche GeoPortal.rlp OGC-API-Features. Lizenz: DL-DE-BY-2.0; Quellenangabe `©GeoBasis-DE / LVermGeoRP <Bezugsjahr>, dl-de/by-2-0, www.lvermgeo.rlp.de [Daten bearbeitet]`. Metadaten nennen monatliche Aktualität, warnen aber vor Koordinaten aus unterschiedlichen Vermessungsepochen. Kataster-Straßenverkehrsflächen sind nicht automatisch asphaltierte Fahrbahnränder; ALKIS-`Weg` wird nicht fälschlich als Gehweg behandelt.
+- OpenStreetMap: begrenzter Overpass-Abfragebereich; Datenlizenz ODbL 1.0, Attribution „© OpenStreetMap-Mitwirkende“. Straßen-Mittellinien werden für die Vorschau anhand von `width`, `lanes` oder offengelegten Straßenklassenannahmen gepuffert. Gehwege erscheinen nur bei expliziten OSM-Gehweg-Tags. Das sind keine vermessenen Fahrbahnkanten.
 - Kernbibliotheken: React, Zustand, Proj4, Turf.js und Vitest unter MIT; Leaflet unter BSD-2-Clause; Playwright unter Apache-2.0. Die aufgelösten Versionen sind in `package-lock.json` eingefroren. Leaflet-Geoman wird nicht genutzt; Zeichen- und Verschiebewerkzeuge sind lokal implementiert.
 - Es wird keine Geocoding-API verwendet. Ortssuche erfolgt durch Kartenverschiebung oder WGS84-Koordinaten.
-- Keine Geometrie wird aus Kartenkacheln abgeleitet. Projekte bleiben lokal; der Kartenanbieter erhält bei Nutzung technisch notwendige Tile-Anfragen.
+- Keine Geometrie wird aus Kartenkacheln abgeleitet. Projekte bleiben lokal; Karten- und Geodatendienste erhalten bei Import/Nutzung technisch notwendige Anfragen.
 - Es ist kein Luftbild-WMS eingebaut. Die optionale Rheinland-Pfalz-Abdeckung ist keine Voraussetzung der Anwendung.
 - `reference/Problematik_der_Rathauskurve.txt` ist fachlicher Kontext. Die schematische Skizze wird nicht als Messgrundlage benutzt. Die Demo ist vollständig synthetisch und behauptet keinerlei reale Ortsmaße.
 

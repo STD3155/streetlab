@@ -47,3 +47,13 @@
 **Abschließende Prüfung:** `npm ci`, `npm run typecheck`, `npm run lint`, `npm test` (21 Tests), `npm run test:e2e` (2 Tests), `npm run build`, `npm audit` — erfolgreich; keine bekannten npm-Audits.
 
 **Offene Punkte:** keine P0-Funktion absichtlich durch vorgezeichnete Pfade ersetzt. Nicht Bestandteil des PoC bleiben echte Rathauskurven-Vermessung, RLP-Luftbild, komplexe/mehrteilige Fahrzeuge und reale Verkehrssicherheitsbewertung.
+
+## Geodatenimport — ALKIS und OSM
+
+**Fachliche Prüfung:** Die offiziellen ALKIS-OGC-API-Features-Schnittstellen `ave:AX_Strassenverkehr` und `ave:GebaeudeBauwerk` liefern für kleine Ausschnitte direkt GeoJSON in WGS84. Die ALKIS-Metadaten bezeichnen den Dienst als monatlich aktuell und warnen, dass Koordinaten unterschiedlicher Vermessungsepochen stammen können. Der separate ALKIS-Weg-Layer ist keine Gehweggarantie und wird deshalb nicht als Gehweg importiert. RLP-Daten tragen DL-DE-BY-2.0-Attribution. OSM/Overpass bleibt die Alternative außerhalb von RLP; OSM-Mittellinien werden für die Vorschau anhand von expliziten Tags oder klar markierten Klassenannahmen gepuffert. Overpass ist ein öffentlicher Community-Dienst und kann ausgelastet sein.
+
+**Umgesetzt:** Quelle wählbar, kleine Bounding-Box, ALKIS Straße/Gebäude oder OSM Straßen/Gebäude/ausdrücklich getaggte Gehwege, AEQD-Transformation in Meter, Quellen-ID/Attribut-/Breitenherkunft an jedem Feature, sichtbare Quelle/Lizenz und fachliche Warnungen, ersetzende Übernahme nach Bestätigung. Maximal 500-m-Projektgrenze und beschränkte Netzwerk-/Objektmengen.
+
+**Prüfung:** Unit-Tests mit servicekonformen GeoJSON-Beispielen sowie Browser-E2E mit simulierten ALKIS-Antworten; zusätzlich wurde die tatsächliche ALKIS-GeoJSON-Antwort und der CORS-Header für einen kleinen Beindersheim-Ausschnitt geprüft.
+
+**Grenze:** Import ist keine automatische Fahrbahnrand-Extraktion. ALKIS-Straßenverkehrsflächen können größer/anders abgegrenzt als die befahrbare Asphaltfläche sein. OSM-Puffermaße sind Annahmen, nicht Vermessung. Overpass-Verfügbarkeit ist nicht garantiert; Fehlermeldungen nennen die genutzten Instanzen.

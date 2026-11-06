@@ -9,6 +9,7 @@ import { calculateMetrics } from '../simulation/metrics';
 import { calculateSweptArea } from '../simulation/sweptArea';
 import { planInWorker } from '../simulation/worker';
 import { StreetMap } from '../map/StreetMap';
+import { fetchSource, type ImportSource } from '../map/dataSources';
 import { useStreetLab, type ToolMode } from './store';
 
 const featureLabels: Record<FeatureKind, string> = { road: 'Fahrbahn', sidewalk: 'Gehweg', building: 'Gebäude', hard_obstacle: 'Hindernis', curb: 'Bordkante' };
@@ -71,6 +72,8 @@ export function App() {
   const visibleKinds = useStreetLab((state) => state.visibleKinds);
   const [coords, setCoords] = useState('50.0000, 9.0000');
   const [isPlaying, setIsPlaying] = useState(false);
+  const [importSource, setImportSource] = useState<ImportSource>('alkis');
+  const [importingGeometry, setImportingGeometry] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const activePlan = useRef<AbortController | null>(null);
   const maneuver = project.maneuvers[0]!;
@@ -196,6 +199,34 @@ export function App() {
     if (fileInput.current) fileInput.current.value = '';
   }
 
+  async function importMapGeometry() {
+    const current = useStreetLab.getState().project;
+    if (current.baseFeatures.length && !confirm('Die aktuellen Bestandsflächen und Variantenänderungen durch den gewählten Kartendatensatz ersetzen?')) return;
+    const controller = new AbortController();
+    setImportingGeometry(true);
+    useStreetLab.getState().setStatus(`${importSource === 'alkis' ? 'ALKIS' : 'OpenStreetMap'}-Geometrie wird für den Ausschnitt abgerufen …`);
+    try {
+      const imported = await fetchSource(importSource, current.boundsWgs84, current.centerWgs84, controller.signal);
+      if (!imported.features.length) throw new Error('Der Ausschnitt enthält keine passenden Flächen. Bitte einen anderen Kartenausschnitt wählen.');
+      const now = new Date().toISOString().slice(0, 10);
+      const next = structuredClone(current);
+      next.baseFeatures = imported.features;
+      for (const scenario of next.scenarios) {
+        scenario.additions = [];
+        scenario.removedBaseFeatureIds = [];
+        scenario.modifiedBaseFeatures = [];
+      }
+      next.geometrySource = imported.source === 'alkis'
+        ? `©GeoBasis-DE / LVermGeoRP ${now}, dl-de/by-2-0; ALKIS-RLP [Daten bearbeitet]`
+        : `© OpenStreetMap-Mitwirkende ${now}, ODbL 1.0; Daten bearbeitet`;
+      next.geometryAccuracyNote = imported.notes.join(' ');
+      useStreetLab.getState().setProject(next);
+      useStreetLab.getState().setStatus(`${imported.source === 'alkis' ? 'ALKIS' : 'OSM'} geladen: ${imported.counts.roads} Straßenflächen, ${imported.counts.buildings} Gebäude, ${imported.counts.sidewalks} ausdrücklich kartierte Gehwegflächen.${imported.counts.skipped ? ` ${imported.counts.skipped} ungültige oder nicht unterstützte Objekte ausgelassen.` : ''} ${imported.notes[1] ?? ''} ${imported.notes.at(-1) ?? ''}`);
+    } catch (error) {
+      useStreetLab.getState().setStatus(error instanceof Error ? `Geometrieimport fehlgeschlagen: ${error.message}` : 'Geometrieimport fehlgeschlagen.');
+    } finally { setImportingGeometry(false); }
+  }
+
   return <main className="app-shell">
     <header className="topbar">
       <div className="brand"><div className="brand-mark">S</div><div><strong>StreetLab</strong><span>Geometrisches Straßenraum-Labor</span></div></div>
@@ -222,6 +253,13 @@ export function App() {
             <div className="input-row"><input id="coordinates" value={coords} onChange={(event) => setCoords(event.target.value)} /><button className="small-button" type="submit" title="Neues Gebiet öffnen">↗</button></div>
           </form>
           <p className="micro-copy">Karte verschieben oder Zielkoordinaten eingeben. Ein neues Gebiet erstellt ein leeres, lokales Projekt.</p>
+          <label className="field-label" htmlFor="geometry-source">Geometriedatenquelle</label>
+          <select id="geometry-source" className="source-select" value={importSource} onChange={(event) => setImportSource(event.target.value as ImportSource)}>
+            <option value="alkis">ALKIS Rheinland-Pfalz · amtliche Flächen</option>
+            <option value="osm">OpenStreetMap · ergänzende Kartierung</option>
+          </select>
+          <button className="button osm-button" onClick={() => void importMapGeometry()} disabled={importingGeometry || busy}>{importingGeometry ? 'Geometrie wird geladen …' : importSource === 'alkis' ? 'ALKIS-Geometrie übernehmen' : 'OSM-Geometrie übernehmen'}</button>
+          <p className="osm-attribution">{importSource === 'alkis' ? <>©GeoBasis-DE / LVermGeoRP, Datenlizenz Deutschland – Namensnennung 2.0. Nur Rheinland-Pfalz.</> : <>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap-Mitwirkende</a>, ODbL 1.0. Straßenbreiten können Schätzwerte sein.</>}</p>
         </section>
 
         <section className="panel-section">
@@ -272,7 +310,7 @@ export function App() {
       <section className="map-column">
         <div className="map-toolbar"><div className="map-heading"><span className="live-dot" /><strong>{tool === 'select' ? 'Karte' : toolName}</strong><span>{tool === 'select' ? 'Verschieben · Zoomen · Auswählen' : 'Klicken Sie auf die Karte'}</span></div><div className="map-badges"><span>AEQD · lokal metrisch</span><span>500 m max.</span></div></div>
         <div className="map-frame"><StreetMap /></div>
-        <div className="map-footer"><span><b>●</b> {project.geometryAccuracyNote}</span><span>Maßstab in m</span></div>
+        <div className="map-footer"><span title={project.geometryAccuracyNote}><b>●</b> {project.geometryAccuracyNote}</span><span>Maßstab in m</span></div>
         <div className="map-legend"><span><i className="line-sample base" /> Bestand</span><span><i className="line-sample variant" /> Variante</span><span><i className="area-sample" /> Schleppfläche</span><span><i className="marker-sample">A</i> Start / Ziel</span></div>
       </section>
 

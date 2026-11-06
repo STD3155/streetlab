@@ -41,3 +41,43 @@ test('Worker-Berechnung lässt sich abbrechen, ohne die Oberfläche zu blockiere
   await page.getByRole('button', { name: 'Demo laden' }).click();
   await expect(page.getByText('Demo-L-Kurve', { exact: true })).toBeVisible();
 });
+
+test('ALKIS-Geometrie lässt sich für einen RLP-Ausschnitt übernehmen', async ({ page }) => {
+  await page.route('https://www.geoportal.rlp.de/spatial-objects/**', async (route) => {
+    const url = new URL(route.request().url());
+    const road = url.pathname.includes('AX_Strassenverkehr');
+    const coordinates = road
+      ? [[[8.3498, 49.5598], [8.3502, 49.5598], [8.3502, 49.5602], [8.3498, 49.5602], [8.3498, 49.5598]]]
+      : [[[8.3497, 49.5603], [8.3499, 49.5603], [8.3499, 49.5605], [8.3497, 49.5605], [8.3497, 49.5603]]];
+    await route.fulfill({ status: 200, contentType: 'application/geo+json', body: JSON.stringify({
+      type: 'FeatureCollection', links: [], features: [{ type: 'Feature', id: road ? 'AX_Strassenverkehr.1' : 'GebaeudeBauwerk.2', properties: { gml_id: road ? 'AX_Strassenverkehr.1' : 'GebaeudeBauwerk.2' }, geometry: { type: 'Polygon', coordinates } }],
+    }) });
+  });
+  page.on('dialog', (dialog) => dialog.accept());
+  await page.goto('/');
+  await page.locator('#coordinates').fill('49.56, 8.35');
+  await page.locator('button[title="Neues Gebiet öffnen"]').click();
+  await page.getByRole('button', { name: 'ALKIS-Geometrie übernehmen' }).click();
+  await expect(page.getByRole('status')).toContainText('ALKIS geladen: 1 Straßenflächen, 1 Gebäude', { timeout: 10000 });
+  await expect(page.locator('.layer-row').first()).toContainText('2');
+  await expect(page.locator('.project-title small')).toContainText('GeoBasis-DE');
+});
+
+test('OpenStreetMap-Geometrie wird als beschriftete lokale Fläche importiert', async ({ page }) => {
+  await page.route('https://overpass-api.de/api/interpreter', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ elements: [
+      { type: 'way', id: 701, tags: { highway: 'residential', name: 'OSM-Teststraße', width: '6', sidewalk: 'both' }, geometry: [{ lat: 50, lon: 8.9998 }, { lat: 50, lon: 9.0002 }] },
+      { type: 'way', id: 702, tags: { building: 'yes', name: 'OSM-Testhaus' }, geometry: [{ lat: 50.0001, lon: 9.0001 }, { lat: 50.0001, lon: 9.0002 }, { lat: 50.0002, lon: 9.0002 }, { lat: 50.0002, lon: 9.0001 }, { lat: 50.0001, lon: 9.0001 }] },
+    ] }) });
+  });
+  page.on('dialog', (dialog) => dialog.accept());
+  await page.goto('/');
+  await page.getByLabel('Geometriedatenquelle').selectOption('osm');
+  await page.getByRole('button', { name: 'OSM-Geometrie übernehmen' }).click();
+  await expect(page.getByRole('status')).toContainText('OSM geladen: 1 Straßenflächen, 1 Gebäude, 2 ausdrücklich kartierte Gehwegflächen', { timeout: 10000 });
+  await expect(page.locator('.layer-row').first()).toContainText('4');
+  await expect(page.locator('.project-title small')).toContainText('OpenStreetMap-Mitwirkende');
+});
+
+// End of source-import browser workflows.
+
