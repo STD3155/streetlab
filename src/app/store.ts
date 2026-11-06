@@ -1,10 +1,10 @@
 import { create } from 'zustand';
-import { createDemoProject } from '../demo/demoProject';
+import { createProject } from '../domain/project';
 import { importProject } from '../persistence/projectIO';
 import { isValidPolygon } from '../domain/geometry';
-import type { FeatureKind, Project, SimulationResult, SurfaceFeature } from '../domain/types';
+import type { FeatureKind, Project, SurfaceFeature } from '../domain/types';
 
-export type ToolMode = 'select' | 'road' | 'sidewalk' | 'building' | 'hard_obstacle' | 'island' | 'poller' | 'sidewalk_protection' | 'area' | 'start' | 'goal' | 'move' | 'move_vertex' | 'measure';
+export type ToolMode = 'select' | 'road' | 'sidewalk' | 'building' | 'hard_obstacle' | 'curb' | 'area' | 'move' | 'move_vertex' | 'measure';
 type StreetLabState = {
   project: Project;
   past: Project[];
@@ -14,14 +14,7 @@ type StreetLabState = {
   tool: ToolMode;
   pendingPoints: { x: number; y: number }[];
   selectedFeatureId: string | null;
-  results: Record<string, SimulationResult>;
   status: string;
-  busy: boolean;
-  progress: number;
-  playback: number;
-  pollerDiameterM: number;
-  showBase: boolean;
-  showVariant: boolean;
   visibleKinds: Record<FeatureKind, boolean>;
   setTool: (tool: ToolMode) => void;
   addPoint: (point: { x: number; y: number }) => void;
@@ -34,13 +27,6 @@ type StreetLabState = {
   setProject: (project: Project) => void;
   updateProject: (project: Project) => void;
   setStatus: (status: string) => void;
-  setBusy: (busy: boolean) => void;
-  setProgress: (progress: number) => void;
-  setResult: (result: SimulationResult) => void;
-  clearResults: () => void;
-  setPlayback: (playback: number) => void;
-  setPollerDiameter: (diameterM: number) => void;
-  setVisibility: (base: boolean, variant: boolean) => void;
   setKindVisibility: (kind: FeatureKind, visible: boolean) => void;
   newVariant: () => void;
   setEditTarget: (target: 'base' | 'scenario') => void;
@@ -50,15 +36,17 @@ type StreetLabState = {
 
 function loadProject(): Project {
   try {
-    const stored = localStorage.getItem('streetlab.project.v1');
-    return stored ? importProject(stored) : createDemoProject();
-  } catch { return createDemoProject(); }
+    const stored = localStorage.getItem('streetlab.project.v2') ?? localStorage.getItem('streetlab.project.v1');
+    return stored ? importProject(stored) : createProject();
+  } catch { return createProject(); }
 }
 
+const initialProject = loadProject();
+
 export const useStreetLab = create<StreetLabState>((set, get) => ({
-  project: loadProject(), past: [], future: [], scenarioId: 'variant-a', editTarget: 'base', tool: 'select', pendingPoints: [], selectedFeatureId: null,
-  results: {}, status: 'Demo bereit. Geometrie ist synthetisch und unvermessen.', busy: false, progress: 0, playback: 0, pollerDiameterM: 0.4,
-  showBase: true, showVariant: true, visibleKinds: { road: true, sidewalk: true, building: true, hard_obstacle: true, curb: true },
+  project: initialProject, past: [], future: [], scenarioId: initialProject.scenarios[0]!.id, editTarget: 'base', tool: 'select', pendingPoints: [], selectedFeatureId: null,
+  status: 'Projektbereich auswählen und ALKIS-Flächengrundlage laden.',
+  visibleKinds: { street_space: true, road: true, sidewalk: true, building: true, hard_obstacle: true, curb: true },
   setTool: (tool) => set({ tool, pendingPoints: [] }),
   addPoint: (point) => set((state) => ({ pendingPoints: [...state.pendingPoints, point] })),
   clearPending: () => set({ pendingPoints: [] }),
@@ -69,9 +57,10 @@ export const useStreetLab = create<StreetLabState>((set, get) => ({
       const target = next.scenarios.find((item) => item.id === scenarioId);
       if (target) target.additions.push(feature);
     } else next.baseFeatures.push(feature);
-    set({ project: next, past: [...get().past, structuredClone(project)].slice(-20), future: [], results: {}, pendingPoints: [], tool: 'select', status: 'Geometrie geändert – Ergebnisse veraltet; bitte neu berechnen.' });
+    set({ project: next, past: [...get().past, structuredClone(project)].slice(-20), future: [], pendingPoints: [], tool: 'select', status: 'Geometrie geändert.' });
   },
   removeFeature: (id) => {
+    if (get().project.baseFeatures.find((feature) => feature.id === id)?.properties?.reference) { set({ status: 'ALKIS-Referenzflächen bleiben unverändert.' }); return; }
     const current = get(); const next = structuredClone(current.project);
     const isBase = next.baseFeatures.some((feature) => feature.id === id);
     if (isBase && current.editTarget === 'scenario') {
@@ -87,14 +76,15 @@ export const useStreetLab = create<StreetLabState>((set, get) => ({
     } else {
       for (const scenario of next.scenarios) scenario.additions = scenario.additions.filter((feature) => feature.id !== id);
     }
-    set({ project: next, past: [...current.past, structuredClone(current.project)].slice(-20), future: [], results: {}, selectedFeatureId: null, status: isBase && current.editTarget === 'scenario' ? 'Fläche in dieser Variante entfernt; der Bestand bleibt unverändert.' : 'Fläche entfernt. Simulationsergebnisse wurden verworfen.' });
+    set({ project: next, past: [...current.past, structuredClone(current.project)].slice(-20), future: [], selectedFeatureId: null, status: isBase && current.editTarget === 'scenario' ? 'Fläche in dieser Variante entfernt; der Bestand bleibt unverändert.' : 'Fläche entfernt.' });
   },
   selectFeature: (id) => set({ selectedFeatureId: id }),
   translateFeatureTo: (id, x, y) => {
+    if (get().project.baseFeatures.find((feature) => feature.id === id)?.properties?.reference) { set({ status: 'ALKIS-Referenzflächen bleiben unverändert.' }); return; }
     const current = get(); const next = structuredClone(current.project);
     const base = next.baseFeatures.find((item) => item.id === id);
     const scenario = next.scenarios.find((item) => item.id === current.scenarioId);
-    let feature = [...next.scenarios.flatMap((item) => item.additions)].find((item) => item.id === id);
+    let feature = (scenario?.additions ?? []).find((item) => item.id === id);
     if (base) {
       if (current.editTarget === 'scenario' && scenario) {
         feature = scenario.modifiedBaseFeatures.find((item) => item.id === id) ?? structuredClone(base);
@@ -107,13 +97,14 @@ export const useStreetLab = create<StreetLabState>((set, get) => ({
     const dx = x - center.x; const dy = y - center.y;
     feature.geometry = feature.geometry.map((ring) => ring.map((point) => ({ x: point.x + dx, y: point.y + dy })));
     if (!isValidPolygon(feature.geometry) || feature.geometry.flat().some((point) => Math.hypot(point.x, point.y) > 250)) { set({ status: 'Verschiebung verworfen: Polygon wäre ungültig oder außerhalb des Projektbereichs.' }); return; }
-    set({ project: next, past: [...current.past, structuredClone(current.project)].slice(-20), future: [], results: {}, status: current.editTarget === 'scenario' ? 'Fläche nur in der Variante verschoben; Ergebnisse veraltet.' : 'Fläche verschoben – Ergebnisse veraltet.' });
+    set({ project: next, past: [...current.past, structuredClone(current.project)].slice(-20), future: [], status: current.editTarget === 'scenario' ? 'Fläche nur in der Variante verschoben.' : 'Fläche verschoben.' });
   },
   moveVertexTo: (id, x, y) => {
+    if (get().project.baseFeatures.find((feature) => feature.id === id)?.properties?.reference) { set({ status: 'ALKIS-Referenzflächen bleiben unverändert.' }); return; }
     const current = get(); const next = structuredClone(current.project);
     const base = next.baseFeatures.find((item) => item.id === id);
     const scenario = next.scenarios.find((item) => item.id === current.scenarioId);
-    let feature = [...next.scenarios.flatMap((item) => item.additions)].find((item) => item.id === id);
+    let feature = (scenario?.additions ?? []).find((item) => item.id === id);
     if (base) {
       if (current.editTarget === 'scenario' && scenario) {
         feature = scenario.modifiedBaseFeatures.find((item) => item.id === id) ?? structuredClone(base);
@@ -139,44 +130,38 @@ export const useStreetLab = create<StreetLabState>((set, get) => ({
       return point;
     });
     if (!isValidPolygon(feature.geometry) || feature.geometry.flat().some((point) => Math.hypot(point.x, point.y) > 250)) { set({ status: 'Stützpunktänderung verworfen: Polygon wäre ungültig oder außerhalb des Projektbereichs.' }); return; }
-    set({ project: next, past: [...current.past, structuredClone(current.project)].slice(-20), future: [], results: {}, status: 'Stützpunkt verschoben – Ergebnisse veraltet.' });
+    set({ project: next, past: [...current.past, structuredClone(current.project)].slice(-20), future: [], status: 'Stützpunkt verschoben.' });
   },
-  setProject: (project) => set({ project, past: [], future: [], editTarget: 'base', scenarioId: project.scenarios[0]?.id ?? '', results: {}, status: `Projekt „${project.title}“ geladen.` }),
-  updateProject: (project) => set({ project, past: [...get().past, structuredClone(get().project)].slice(-20), future: [], results: {}, status: 'Projekt geändert – Ergebnisse veraltet.' }),
+  setProject: (project) => set({ project, selectedFeatureId: null, pendingPoints: [], tool: 'select', past: [], future: [], editTarget: 'base', scenarioId: project.scenarios[0]?.id ?? '', status: `Projekt „${project.title}“ geladen.` }),
+  updateProject: (project) => set({ project, past: [...get().past, structuredClone(get().project)].slice(-20), future: [], status: 'Projekt geändert.' }),
   setStatus: (status) => set({ status }),
-  setBusy: (busy) => set({ busy }),
-  setProgress: (progress) => set({ progress }),
-  setResult: (result) => set((state) => ({ results: { ...state.results, [result.scenarioId]: result }, status: result.status === 'success' ? `Berechnung abgeschlossen (${result.path.length} Posen).` : result.warnings[0] ?? result.status })),
-  clearResults: () => set({ results: {} }),
-  setPlayback: (playback) => set({ playback }),
-  setPollerDiameter: (pollerDiameterM) => set({ pollerDiameterM: Math.max(0.1, Math.min(2, pollerDiameterM)) }),
-  setVisibility: (showBase, showVariant) => set({ showBase, showVariant }),
   setKindVisibility: (kind, visible) => set((state) => ({ visibleKinds: { ...state.visibleKinds, [kind]: visible } })),
   newVariant: () => {
     const next = structuredClone(get().project);
     const id = `variant-${next.scenarios.length + 1}`;
     next.scenarios.push({ id, name: `Variante ${String.fromCharCode(65 + next.scenarios.length)}`, additions: [], removedBaseFeatureIds: [], modifiedBaseFeatures: [] });
-    set({ project: next, past: [...get().past, structuredClone(get().project)].slice(-20), future: [], scenarioId: id, editTarget: 'scenario', results: {}, status: `${next.scenarios.at(-1)!.name} angelegt.` });
+    set({ project: next, past: [...get().past, structuredClone(get().project)].slice(-20), future: [], scenarioId: id, editTarget: 'scenario', selectedFeatureId: null, pendingPoints: [], tool: 'select', status: `${next.scenarios.at(-1)!.name} angelegt.` });
   },
-  setEditTarget: (editTarget) => set({ editTarget, tool: 'select', pendingPoints: [] }),
+  setEditTarget: (editTarget) => set({ editTarget, selectedFeatureId: null, tool: 'select', pendingPoints: [] }),
   undo: () => {
     const { past, project, future } = get();
     if (!past.length) return;
     const previous = past.at(-1)!;
-    set({ project: previous, past: past.slice(0, -1), future: [...future, structuredClone(project)], results: {}, status: 'Letzte Änderung rückgängig gemacht; Simulationsergebnisse verworfen.' });
+    set({ project: previous, scenarioId: previous.scenarios.some((item) => item.id === get().scenarioId) ? get().scenarioId : previous.scenarios[0]!.id, selectedFeatureId: null, pendingPoints: [], past: past.slice(0, -1), future: [...future, structuredClone(project)], status: 'Letzte Änderung rückgängig gemacht.' });
   },
   redo: () => {
     const { past, project, future } = get();
     if (!future.length) return;
     const next = future.at(-1)!;
-    set({ project: next, past: [...past, structuredClone(project)].slice(-20), future: future.slice(0, -1), results: {}, status: 'Änderung wiederhergestellt; Simulationsergebnisse verworfen.' });
+    set({ project: next, scenarioId: next.scenarios.some((item) => item.id === get().scenarioId) ? get().scenarioId : next.scenarios[0]!.id, selectedFeatureId: null, pendingPoints: [], past: [...past, structuredClone(project)].slice(-20), future: future.slice(0, -1), status: 'Änderung wiederhergestellt.' });
   },
 }));
 
 let storageErrorReported = false;
 if (typeof window !== 'undefined') {
-  useStreetLab.subscribe((state) => {
-    try { localStorage.setItem('streetlab.project.v1', JSON.stringify(state.project)); storageErrorReported = false; }
+  useStreetLab.subscribe((state, previous) => {
+    if (state.project === previous.project) return;
+    try { localStorage.setItem('streetlab.project.v2', JSON.stringify(state.project)); storageErrorReported = false; }
     catch { if (!storageErrorReported) { storageErrorReported = true; useStreetLab.setState({ status: 'Lokales Speichern fehlgeschlagen (Speicher voll oder gesperrt).' }); } }
   });
 }

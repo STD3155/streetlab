@@ -1,79 +1,48 @@
 # StreetLab
 
-StreetLab ist ein lokaler, experimenteller PoC zur maßstäblichen Erfassung kleiner Straßenräume und zur geometrischen Prüfung von Pkw-Fahrbewegungen. Die Anwendung berechnet Fahrlinien tatsächlich; sie verschiebt keine vorgezeichneten Routen. Sie ist **keine amtliche Verkehrsplanung**, keine Unfallprognose und keine Aussage über das Verhalten realer Fahrer.
+StreetLab ist die lokale Arbeitsgrundlage für einen Straßenentwurf innerhalb eines ausgewählten ALKIS-Straßenraums. Der aktuelle Ausbau enthält Karte, Projektbereich, ALKIS-Referenzflächen, einen manuellen Flächeneditor und Varianten.
 
-## Start
+**Querschnittsgenerator und Regelprüfung sind geplant, aber noch nicht implementiert.** Die Anwendung liefert derzeit keine Aussage zur Gesetzes- oder Regelkonformität eines Entwurfs. Der [Umsetzungsplan](docs/STRASSENENTWURF_PLAN.md) beschreibt die nächsten Schritte.
 
-Voraussetzungen: Node.js **22.12 oder neuer** (für den verwendeten Test-Stack) und npm.
+## Lokal starten
+
+Voraussetzung: Node.js 22.12 oder neuer und npm.
 
 ```bash
 npm ci
 npm run dev
 ```
 
-Vite zeigt anschließend die lokale URL an. Die synthetische Demo ist beim ersten Aufruf geladen. Eine Karte benötigt eine Internetverbindung zu den OpenStreetMap-Kacheln; wenn Kacheln ausfallen oder offline sind, bleiben Geometrieeditor, Simulation, Projektimport und Demo-Daten verfügbar. Berechnungen und Projekte laufen vollständig im Browser; es gibt kein Backend, keine Konten und keine bezahlten Dienste.
+Die Anwendung benötigt weder Konto noch Backend. Projekte werden lokal im Browser gespeichert. Karten- und ALKIS-Abrufe benötigen Internetzugang; der Flächeneditor funktioniert auch ohne geladene Kartenkacheln.
 
-Für die Browser-E2E-Prüfung Chromium einmalig installieren:
+## Arbeitsablauf
+
+1. Koordinaten als `Breitengrad, Längengrad` eingeben und das Gebiet öffnen.
+2. Mit „Bereich festlegen“ zwei gegenüberliegende Ecken auswählen. Der Projektdurchmesser ist auf 500 m begrenzt.
+3. „ALKIS-Flächengrundlage laden“ übernimmt Straßenverkehrsflächen und Gebäude aus Rheinland-Pfalz als unveränderbare Referenz. Ein erneuter Abruf ersetzt diese Referenzen und erhält manuelle Flächen und Varianten.
+4. Fahrbahn, Gehweg, Gebäude, Hindernisse und Bordflächen manuell zeichnen. Flächen und Stützpunkte bearbeiten, Abstände messen und Änderungen mit Undo/Redo zurücknehmen.
+5. Zwischen Bestand und Variante wechseln. Änderungen in einer Variante lassen den Bestand unverändert.
+6. Projekt als JSON sichern und wieder importieren; GeoJSON exportiert die erfassten Flächen einschließlich Quellenangaben und Variantenkennungen.
+
+Projektdateien verwenden Schema v2. Frühere v1-Dateien bleiben importierbar: Fahrzeug- und Manöverdaten werden bei der Übernahme weggelassen; erkennbare ALKIS-Fahrbahnflächen werden zu Straßenraumreferenzen. Der frühere lokale Speicher bleibt erhalten und wird bei Bedarf eingelesen. Neue Änderungen werden unter einem separaten v2-Speicherschlüssel gespeichert.
+
+## Datenquellen
+
+- Hintergrundkarte: © OpenStreetMap-Mitwirkende, mit sichtbarer Attribution und normalem Kachelabruf. Konfigurierbar über `VITE_OSM_TILE_URL`; keine Kachelarchive oder Vorabdownloads. [OSM Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/).
+- ALKIS Rheinland-Pfalz: `AX_Strassenverkehr` und `GebaeudeBauwerk` über die öffentlichen GeoPortal.rlp-Features-Dienste. Quellenangabe: ©GeoBasis-DE / LVermGeoRP, dl-de/by-2-0, Daten bearbeitet. Straßenverkehrsflächen beschreiben Nutzungsflächen; sie sind kein Nachweis für genaue Fahrbahnränder oder öffentliche Widmung. Eigentümerdaten werden nicht abgefragt.
+- Projekte und Geometrie bleiben lokal. Die genutzten Karten- und Geodatendienste erhalten die technisch notwendigen Anfragen.
+
+## Prüfung und Build
 
 ```bash
+npm run typecheck
+npm run lint
+npm test
 npx playwright install chromium
+npm run test:e2e
+npm run build
 ```
 
-## Entwicklungsbefehle
+Der statische Build liegt unter `dist/`. Die vorhandenen GitHub-Workflows prüfen den Quellcode und unterstützen die Veröffentlichung über GitHub Pages. Bei Projekt-Repositories wird der Vite-Unterpfad im Pages-Build automatisch gesetzt.
 
-| Befehl | Zweck |
-|---|---|
-| `npm run dev` | lokale Entwicklung |
-| `npm run build` | TypeScript-Prüfung und statischer Produktionsbuild nach `dist/` |
-| `npm run typecheck` | strikter TypeScript-Check |
-| `npm run lint` | ESLint |
-| `npm test` | Vitest-Unit-/Integrationstests |
-| `npm run test:e2e` | Playwright-Browserabläufe |
-
-Abhängigkeiten sind in `package-lock.json` eingefroren. `npm audit` ist mit der mitgelieferten Auflösung ohne bekannte Advisories.
-
-## Demo-Workflow
-
-1. `Demo laden` öffnet die reproduzierbare, synthetische `Demo-L-Kurve` (lokale Maße in Metern, ausdrücklich nicht vermessen).
-2. Links können Fahrbahn, Gehweg, Gebäude, Hindernis und weitere Polygone durch Kartenklicks erstellt werden; `Polygon abschließen` übernimmt die Fläche.
-3. `Bereich aufziehen` begrenzt den Arbeitsbereich auf höchstens 500 m Durchmesser. Koordinaten werden als `Breitengrad, Längengrad` (WGS84) eingegeben; ein neues Gebiet startet bewusst leer.
-4. Bei **Geometriedatenquelle** ALKIS Rheinland-Pfalz oder OpenStreetMap wählen und auf „Geometrie übernehmen“ klicken. Der Abruf ersetzt nach Bestätigung Bestand und Variantenflächen. ALKIS ist der bevorzugte amtliche Import innerhalb von Rheinland-Pfalz; OSM ist die Alternative für andere Orte.
-5. Start und Ziel auf der Karte anklicken, Richtungswinkel in Grad setzen und Fahrzeugdaten bei Bedarf bearbeiten. Der Fahrzeugreferenzpunkt ist die Hinterachsmitte.
-6. Zwischen Bestands- und Variantenbearbeitung wechseln. Die Demo enthält bereits eine Insel; zusätzlich lassen sich Inseln, Poller (Ø 0,1–2,0 m) oder Gehwegschutz zeichnen. Variantenänderungen verändern den Bestand nicht.
-7. `Bestand & Variante berechnen` startet zwei unabhängige Vorwärtsplanungen mit denselben Manöver- und Fahrzeugparametern. „Nur Fahrbahn“ verlangt, dass der gesamte Fahrzeugumriss innerhalb der erfassten Fahrbahn bleibt. Das Ergebnis enthält Status, Linien, approximierte Schleppflächen, Gehwegkontakt, Überdeckung, Abstand und Weglänge.
-8. Projektdatei als versioniertes JSON oder Geometrie als WGS84-GeoJSON exportieren. JSON kann importiert werden; der aktuelle Projektstand wird zusätzlich automatisch in `localStorage` gehalten.
-
-Zeichenwerkzeuge umfassen Polygon-Erstellung, Flächenverschiebung, Stützpunktverschiebung, Auswahl/Löschen, Messung und 20 Schritte Undo/Redo. Layer können nach Szenario und Feature-Art ausgeblendet werden; das ändert nicht die Simulationsgeometrie.
-
-## Datenquellen und Datenschutz
-
-- OSM-Basiskarte: `https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png`, mit sichtbarer Attribution „© OpenStreetMap-Mitwirkende“. Die Tile-URL ist über `VITE_OSM_TILE_URL` konfigurierbar. Kacheln werden im normalen Kartenbetrieb angefragt und nicht gespeichert/vorabgeladen. Siehe [OSM Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/).
-- ALKIS Rheinland-Pfalz: Straßenverkehrsflächen aus `AX_Strassenverkehr` und Gebäude aus `GebaeudeBauwerk`, bezogen über öffentliche GeoPortal.rlp OGC-API-Features. Lizenz: DL-DE-BY-2.0; Quellenangabe `©GeoBasis-DE / LVermGeoRP <Bezugsjahr>, dl-de/by-2-0, www.lvermgeo.rlp.de [Daten bearbeitet]`. Metadaten nennen monatliche Aktualität, warnen aber vor Koordinaten aus unterschiedlichen Vermessungsepochen. Kataster-Straßenverkehrsflächen sind nicht automatisch asphaltierte Fahrbahnränder; ALKIS-`Weg` wird nicht fälschlich als Gehweg behandelt.
-- OpenStreetMap: begrenzter Overpass-Abfragebereich; Datenlizenz ODbL 1.0, Attribution „© OpenStreetMap-Mitwirkende“. Straßen-Mittellinien werden für die Vorschau anhand von `width`, `lanes` oder offengelegten Straßenklassenannahmen gepuffert. Gehwege erscheinen nur bei expliziten OSM-Gehweg-Tags. Das sind keine vermessenen Fahrbahnkanten.
-- Kernbibliotheken: React, Zustand, Proj4, Turf.js und Vitest unter MIT; Leaflet unter BSD-2-Clause; Playwright unter Apache-2.0. Die aufgelösten Versionen sind in `package-lock.json` eingefroren. Leaflet-Geoman wird nicht genutzt; Zeichen- und Verschiebewerkzeuge sind lokal implementiert.
-- Es wird keine Geocoding-API verwendet. Ortssuche erfolgt durch Kartenverschiebung oder WGS84-Koordinaten.
-- Keine Geometrie wird aus Kartenkacheln abgeleitet. Projekte bleiben lokal; Karten- und Geodatendienste erhalten bei Import/Nutzung technisch notwendige Anfragen.
-- Es ist kein Luftbild-WMS eingebaut. Die optionale Rheinland-Pfalz-Abdeckung ist keine Voraussetzung der Anwendung.
-- `reference/Problematik_der_Rathauskurve.txt` ist fachlicher Kontext. Die schematische Skizze wird nicht als Messgrundlage benutzt. Die Demo ist vollständig synthetisch und behauptet keinerlei reale Ortsmaße.
-
-## Veröffentlichung als GitHub Page
-
-Ein Deployment-Workflow liegt unter `.github/workflows/pages.yml`. Für die Veröffentlichung:
-
-1. Ein leeres Repository auf GitHub erstellen und den lokalen Projektstand auf den Branch `main` pushen.
-2. Im GitHub-Repository **Settings → Pages → Build and deployment → Source: GitHub Actions** auswählen.
-3. Der Push auf `main` startet den Workflow; nach erfolgreichem Lauf steht die URL im Bereich **Actions** beziehungsweise **Settings → Pages**.
-
-Die Vite-Basis wird im Pages-Build automatisch aus `GITHUB_REPOSITORY` abgeleitet. Ein Projekt-Repository wird unter `https://<konto>.github.io/<repository>/` bereitgestellt; ein Repository namens `<konto>.github.io` verwendet `/`. Lokal bleibt die Basis `/`. Der Workflow benötigt keine API-Schlüssel. Die Karte selbst lädt OSM-Kacheln im Browser und benötigt daher weiterhin Netzwerkzugriff.
-
-## Technische Dokumentation
-
-- [Modellannahmen](docs/MODEL_ASSUMPTIONS.md)
-- [Grenzen und nicht implementierte Funktionen](docs/LIMITATIONS.md)
-- [Meilensteinprotokoll](docs/DEVELOPMENT.md)
-- [Akzeptanztest-Status T01–T17](docs/ACCEPTANCE.md)
-- Verbindliche Anforderungen: [REQUIREMENTS.md](REQUIREMENTS.md)
-
-## Ergebnisinterpretation
-
-„Unter diesen Modellannahmen geometrisch kollisionsfrei“ bedeutet ausschließlich, dass die erfassten Fahrzeugumrisse innerhalb der modellierten Flächen liegen und keine erfassten harten Hindernisse berühren. Es sagt nichts über Sicht, Geschwindigkeit, Fußgänger, Oberflächenhöhe, tatsächliche Fahrzeugabmessungen oder verkehrsrechtliche Zulässigkeit aus. „Keine Trajektorie gefunden“ ist kein Beweis der Unbefahrbarkeit.
+Weitere Dokumentation: [Anforderungen](REQUIREMENTS.md), [Grenzen](docs/LIMITATIONS.md), [Entwicklungsstand](docs/DEVELOPMENT.md).

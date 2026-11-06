@@ -1,4 +1,5 @@
-import { booleanIntersects, booleanWithin, featureCollection, kinks, polygon, union } from '@turf/turf';
+import { polygon } from '@turf/helpers';
+import { kinks } from '@turf/kinks';
 import type { Feature, Polygon } from 'geojson';
 import type { LocalPoint, PolygonXY } from './types';
 
@@ -15,14 +16,6 @@ export function isValidPolygon(rings: PolygonXY): boolean {
   catch { return false; }
 }
 
-export function intersects(a: PolygonXY, b: PolygonXY): boolean {
-  try { return booleanIntersects(asFeature(a), asFeature(b)); } catch { return true; }
-}
-
-export function within(a: PolygonXY, b: PolygonXY): boolean {
-  try { return booleanWithin(asFeature(a), asFeature(b)); } catch { return false; }
-}
-
 export function polygonArea(rings: PolygonXY): number {
   return planarArea(rings);
 }
@@ -35,16 +28,6 @@ function ringArea(ring: LocalPoint[]): number {
 
 function planarArea(rings: PolygonXY): number {
   return Math.max(0, rings.reduce((sum, ring, index) => sum + (index === 0 ? 1 : -1) * ringArea(ring), 0));
-}
-
-export function unionPolygons(polygons: PolygonXY[]): PolygonXY[] | null {
-  if (!polygons.length) return null;
-  try {
-    const result = union(featureCollection(polygons.map(asFeature)));
-    if (!result) return null;
-    const components = result.geometry.type === 'Polygon' ? [result.geometry.coordinates] : result.geometry.coordinates;
-    return components.map((component) => component.map((ring) => ring.map(([x, y]) => ({ x, y }))));
-  } catch { return null; }
 }
 
 export function closeRing(points: LocalPoint[]): LocalPoint[] {

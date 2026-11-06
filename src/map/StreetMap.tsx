@@ -1,17 +1,12 @@
 import { useEffect, useMemo } from 'react';
-import { MapContainer, Marker, Polygon, Polyline, ScaleControl, TileLayer, useMap, useMapEvents } from 'react-leaflet';
-import L from 'leaflet';
+import { MapContainer, Polygon, Polyline, Rectangle, ScaleControl, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import { useStreetLab } from '../app/store';
 import { projectDiameterM, toLocal, toWgs84 } from '../domain/projection';
 import type { SurfaceFeature } from '../domain/types';
-import { getVehicleFootprint } from '../simulation/vehicle';
+import { resolveScenario } from '../domain/scenarios';
 import 'leaflet/dist/leaflet.css';
 
-const colors: Record<SurfaceFeature['kind'], string> = { road: '#485b6c', sidewalk: '#c9d4db', building: '#b84b4b', hard_obstacle: '#f08c31', curb: '#9063a8' };
-const iconFor = (headingRad: number, label: string, color: string) => L.divIcon({
-  className: 'pose-marker', html: `<div style="transform:rotate(${-headingRad * 180 / Math.PI}deg);color:${color}">➤</div><span>${label}</span>`,
-  iconSize: [42, 30], iconAnchor: [20, 15],
-});
+const colors: Record<SurfaceFeature['kind'], string> = { street_space: '#219c9a', road: '#485b6c', sidewalk: '#c9d4db', building: '#b84b4b', hard_obstacle: '#f08c31', curb: '#9063a8' };
 const toLatLng = (points: { x: number; y: number }[], center: { lon: number; lat: number }) => points.map((point) => {
   const wgs = toWgs84(point, center); return [wgs.lat, wgs.lon] as [number, number];
 });
@@ -25,20 +20,10 @@ function MapInteractions() {
   const translateFeature = useStreetLab((state) => state.translateFeatureTo);
   const project = useStreetLab((state) => state.project);
   const setStatus = useStreetLab((state) => state.setStatus);
-  const maneuver = project.maneuvers[0];
 
   useMapEvents({ click(event) {
     const point = toLocal({ lon: event.latlng.lng, lat: event.latlng.lat }, project.centerWgs84);
-    if (['road', 'sidewalk', 'building', 'hard_obstacle', 'island', 'sidewalk_protection'].includes(tool)) addPoint(point);
-    else if (tool === 'poller') {
-      if (Math.hypot(point.x, point.y) > 250) { setStatus('Poller liegt außerhalb des maximal 500 m großen Projektbereichs.'); return; }
-      const radius = useStreetLab.getState().pollerDiameterM / 2;
-      const ring = Array.from({ length: 17 }, (_, index) => {
-        const angle = index / 16 * Math.PI * 2;
-        return { x: point.x + Math.cos(angle) * radius, y: point.y + Math.sin(angle) * radius };
-      });
-      useStreetLab.getState().addFeature({ id: crypto.randomUUID(), kind: 'hard_obstacle', geometry: [ring], properties: { name: 'Poller', diameterM: radius * 2, source: 'Nutzereingabe' } }, true);
-    }
+    if (['road', 'sidewalk', 'building', 'hard_obstacle', 'curb'].includes(tool)) addPoint(point);
     else if (tool === 'area') {
       if (pendingPoints.length === 0) addPoint(point);
       else {
@@ -60,14 +45,7 @@ function MapInteractions() {
     }
     else if (tool === 'move' && selectedFeatureId) translateFeature(selectedFeatureId, point.x, point.y);
     else if (tool === 'move_vertex' && selectedFeatureId) useStreetLab.getState().moveVertexTo(selectedFeatureId, point.x, point.y);
-    else if (tool === 'start' || tool === 'goal') {
-      if (!maneuver) return;
-      if (Math.hypot(point.x, point.y) > 250) { setStatus('Pose liegt außerhalb des maximal 500 m großen Projektbereichs.'); return; }
-      const next = structuredClone(project);
-      if (tool === 'start') next.maneuvers[0]!.start = { ...point, headingRad: next.maneuvers[0]!.start.headingRad };
-      else next.maneuvers[0]!.goal = { ...point, headingRad: next.maneuvers[0]!.goal.headingRad };
-      setProject(next);
-    }
+
   } });
   return pendingPoints.length > 0 ? <Polyline positions={toLatLng(pendingPoints, project.centerWgs84)} pathOptions={{ color: '#14b8a6', dashArray: '5 7', weight: 3 }} /> : null;
 }
@@ -81,26 +59,21 @@ function MapViewport() {
 
 function FeatureLayer({ feature, selected, onSelect, colorOverride }: { feature: SurfaceFeature; selected: boolean; onSelect: () => void; colorOverride?: string }) {
   const project = useStreetLab((state) => state.project);
+  const tool = useStreetLab((state) => state.tool);
+  const selecting = ['select', 'move', 'move_vertex'].includes(tool);
   const rings = useMemo(() => feature.geometry.map((ring) => toLatLng(ring, project.centerWgs84)), [feature.geometry, project.centerWgs84]);
-  return <Polygon positions={rings} pathOptions={{ color: selected ? '#f6c344' : colorOverride ?? colors[feature.kind], fillColor: colorOverride ?? colors[feature.kind], fillOpacity: feature.kind === 'road' ? 0.53 : 0.58, weight: selected ? 4 : 2 }} eventHandlers={{ click: () => onSelect() }} />;
+  return <Polygon bubblingMouseEvents={!selecting || selected} positions={rings} pathOptions={{ color: selected ? '#f6c344' : colorOverride ?? colors[feature.kind], fillColor: colorOverride ?? colors[feature.kind], fillOpacity: feature.kind === 'road' ? 0.53 : 0.58, weight: selected ? 4 : 2 }} eventHandlers={{ click: () => { if (selecting) onSelect(); } }} />;
 }
 
 export function StreetMap() {
   const project = useStreetLab((state) => state.project);
   const selectFeature = useStreetLab((state) => state.selectFeature);
   const selectedFeatureId = useStreetLab((state) => state.selectedFeatureId);
-  const showBase = useStreetLab((state) => state.showBase);
-  const showVariant = useStreetLab((state) => state.showVariant);
   const visibleKinds = useStreetLab((state) => state.visibleKinds);
-  const results = useStreetLab((state) => state.results);
-  const playback = useStreetLab((state) => state.playback);
-  const maneuver = project.maneuvers[0];
-  const variant = project.scenarios.find((scenario) => scenario.id === useStreetLab.getState().scenarioId);
-  const baseResult = results['base'];
-  const variantResult = variant ? results[variant.id] : undefined;
-  const vehicle = project.vehicleSpecs.find((spec) => spec.id === maneuver?.vehicleId);
-  const playbackPath = variantResult?.status === 'success' ? variantResult.path : baseResult?.status === 'success' ? baseResult.path : [];
-  const playbackPose = playbackPath.length ? playbackPath[Math.min(playbackPath.length - 1, Math.round(playback * (playbackPath.length - 1)))] : null;
+  const scenarioId = useStreetLab((state) => state.scenarioId);
+  const editTarget = useStreetLab((state) => state.editTarget);
+  const features = editTarget === 'scenario' ? resolveScenario(project, scenarioId) : project.baseFeatures;
+  const baseIds = new Set(project.baseFeatures.map((feature) => feature.id));
   const baseTile = import.meta.env.VITE_OSM_TILE_URL || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
   const center = [project.centerWgs84.lat, project.centerWgs84.lon] as [number, number];
 
@@ -109,20 +82,7 @@ export function StreetMap() {
     <TileLayer url={baseTile} attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap-Mitwirkende</a>' />
     <ScaleControl position="bottomleft" imperial={false} />
     <MapInteractions />
-    {showBase && project.baseFeatures.filter((feature) => visibleKinds[feature.kind]).map((feature) => <FeatureLayer key={feature.id} feature={feature} selected={selectedFeatureId === feature.id} onSelect={() => selectFeature(feature.id)} />)}
-    {showVariant && variant?.additions.filter((feature) => visibleKinds[feature.kind]).map((feature) => <FeatureLayer key={feature.id} feature={feature} selected={selectedFeatureId === feature.id} colorOverride="#d97706" onSelect={() => selectFeature(feature.id)} />)}
-    {maneuver && <>
-      <Marker position={toLatLng([maneuver.start], project.centerWgs84)[0]!} icon={iconFor(maneuver.start.headingRad, 'Start', '#087f5b')} interactive={false} />
-      <Marker position={toLatLng([maneuver.goal], project.centerWgs84)[0]!} icon={iconFor(maneuver.goal.headingRad, 'Ziel', '#1864ab')} interactive={false} />
-    </>}
-    {baseResult?.status === 'success' && showBase && <>
-      {baseResult.sweptArea?.map((polygon, index) => <Polygon key={`base-swept-${index}`} positions={polygon.map((ring) => toLatLng(ring, project.centerWgs84))} pathOptions={{ color: '#228be6', fillColor: '#74c0fc', fillOpacity: 0.23, weight: 1 }} />)}
-      <Polyline positions={toLatLng(baseResult.path, project.centerWgs84)} pathOptions={{ color: '#1864ab', weight: 4, dashArray: '8 5' }} />
-    </>}
-    {variantResult?.status === 'success' && showVariant && <>
-      {variantResult.sweptArea?.map((polygon, index) => <Polygon key={`variant-swept-${index}`} positions={polygon.map((ring) => toLatLng(ring, project.centerWgs84))} pathOptions={{ color: '#e8590c', fillColor: '#ffc078', fillOpacity: 0.24, weight: 1 }} />)}
-      <Polyline positions={toLatLng(variantResult.path, project.centerWgs84)} pathOptions={{ color: '#d9480f', weight: 4 }} />
-    </>}
-    {playbackPose && vehicle && <Polygon positions={getVehicleFootprint(playbackPose, vehicle).map((ring) => toLatLng(ring, project.centerWgs84))} pathOptions={{ color: '#111827', fillColor: '#facc15', fillOpacity: 0.75, weight: 2 }} />}
+    <Rectangle bounds={[[project.boundsWgs84[1], project.boundsWgs84[0]], [project.boundsWgs84[3], project.boundsWgs84[2]]]} pathOptions={{ color: '#176963', fill: false, dashArray: '6 6', weight: 2 }} interactive={false} />
+    {features.filter((feature) => visibleKinds[feature.kind]).map((feature) => <FeatureLayer key={feature.id} feature={feature} selected={selectedFeatureId === feature.id} colorOverride={baseIds.has(feature.id) ? undefined : '#d97706'} onSelect={() => selectFeature(feature.id)} />)}
   </MapContainer>;
 }

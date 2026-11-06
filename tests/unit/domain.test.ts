@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createDemoProject } from '../../src/demo/demoProject';
+import { projectFixture } from '../fixtures/project';
 import { isValidPolygon, polygonArea } from '../../src/domain/geometry';
 import { projectDiameterM, toLocal, toWgs84 } from '../../src/domain/projection';
 import { resolveScenario } from '../../src/domain/scenarios';
@@ -27,7 +27,7 @@ describe('Projekt, Geometrie und Projektion', () => {
   });
 
   it('preserves scenario isolation and project data through import/export', () => {
-    const project = createDemoProject();
+    const project = projectFixture();
     const baseBefore = structuredClone(project.baseFeatures);
     const variantFeatures = resolveScenario(project, 'variant-a');
     expect(variantFeatures.length).toBe(project.baseFeatures.length + 1);
@@ -40,12 +40,25 @@ describe('Projekt, Geometrie und Projektion', () => {
   });
 
   it('rejects unknown schema versions and oversized bounds', () => {
-    const project = createDemoProject();
+    const project = projectFixture();
     expect(() => importProject(JSON.stringify({ ...project, schemaVersion: 999 }))).toThrow(/version/i);
     expect(() => importProject(JSON.stringify({ ...project, boundsWgs84: [-1, -1, 1, 1] }))).toThrow(/500 m/);
     expect(() => importProject('{broken')).toThrow();
-    const invalid = createDemoProject();
+    const invalid = projectFixture();
     invalid.scenarios[0]!.additions[0]!.geometry = [[{ x: 0, y: 0 }, { x: 2, y: 2 }, { x: 2, y: 0 }, { x: 0, y: 2 }, { x: 0, y: 0 }]];
     expect(() => importProject(JSON.stringify(invalid))).toThrow(/Polygon/);
+  });
+});
+
+describe('Migration aus dem früheren Simulator', () => {
+  it('keeps manual geometry and separates ALKIS references from carriageways', () => {
+    const old = { ...projectFixture(), schemaVersion: 1, vehicleSpecs: [{ id: 'old-car' }], maneuvers: [{ id: 'old-maneuver' }] };
+    old.baseFeatures.push({ ...structuredClone(old.baseFeatures[0]!), id: 'alkis-road', properties: { source: 'ALKIS · Straßenverkehrsfläche; old-1' } });
+    const migrated = importProject(JSON.stringify(old));
+    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.baseFeatures.find((feature) => feature.id === 'road-main')?.kind).toBe('road');
+    expect(migrated.baseFeatures.find((feature) => feature.id === 'alkis-road')).toMatchObject({ kind: 'street_space', properties: { reference: true } });
+    expect(JSON.parse(exportProject(migrated))).not.toHaveProperty('vehicleSpecs');
+    expect(JSON.parse(exportProject(migrated))).not.toHaveProperty('maneuvers');
   });
 });
